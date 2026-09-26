@@ -1,11 +1,24 @@
 # Architecture
 
-The app follows a modern Android architecture utilizing Jetpack Compose for the UI layer and Room for local persistence.
+## Layers
 
-## Modules
-- **UI Layer (`ui.components` & `MainActivity.kt`)**: Displays up to 9 camera feeds in dynamic grids (1x1, 2x2, 3x3) using Jetpack Compose `LazyVerticalGrid`. Separated into specific UI components (`VideoPlayer`, `CameraGrid`, `CameraDialog`, `TopBar`) for maintainability.
-- **Data Layer (`data` & `repository`)**: Contains the `AppDatabase` (Room), `CameraDao`, and `CameraRepository` managing the SQLite database and exposing flows to the UI.
-- **Security (`security`)**: A `CryptoManager` utilizing `AndroidKeyStore` securely manages the encryption and decryption of camera passwords before they are stored into Room.
-- **Player (`VideoPlayer`)**: Uses AndroidX Media3 ExoPlayer optimized for RTSP over TCP for consistent NVR and standard camera playback.
-- **Discovery (`OnvifDiscovery` & `nvr`)**: Scans the local network via UDP multicast to discover ONVIF `NetworkVideoTransmitter` profiles. The NVR module outlines an abstraction for retrieving available channels directly from local recorders.
-- **PTZ and Talkback (`ptz` & `player`)**: Interfaces ready for extending interaction using Talkback backchannel and Pan-Tilt-Zoom capabilities natively.
+- `ui/`: Compose dashboard, camera/NVR management, ONVIF discovery screens, and `CameraViewModel`.
+- `player/`: Media3 RTSP playback, HTTP MJPEG frame decoding, lifecycle-bound playback, selected-camera audio coordination, and talkback boundary.
+- `onvif/`: WS-Discovery, secure SOAP/XML parsing, capability/profile inspection, and stream URI requests.
+- `nvr/`: NVR discovery adapter boundary and unsupported-vendor fallback.
+- `data/` and `database/`: repository, Room entities/DAOs, schema migrations, and camera persistence.
+- `security/`: Android Keystore AES/GCM secret storage.
+
+## Camera data flow
+
+The ViewModel validates URLs, creates source-specific camera models, and asks the repository to save them. Room stores non-secret metadata and sanitized endpoint origins. URL paths, query parameters, and credentials are held in encrypted preferences. Repository reads combine metadata with decrypted secrets. Camera deletion also removes the associated secret material; NVR removal cascades across its channels.
+
+RTSP cameras are rendered through Media3. MJPEG cameras use a lifecycle-bound HTTP connection that decodes JPEG frames and limits each frame to 12 MiB. A single audio controller owns output for the selected camera; track availability and camera capability determine whether the audio control is available.
+
+## Network and capability boundaries
+
+ONVIF discovery uses multicast WS-Discovery and imports profiles only after a successful device request. XML parsing disables external entities and DTD processing. NVR vendor discovery is an adapter interface because discovery protocols and channel URL schemes are vendor-specific; manual templates provide a deterministic fallback. PTZ is exposed as capability metadata and an interface boundary but requires a matching command implementation. Talkback likewise remains an interface boundary until a compatible camera transport exists.
+
+## Tests
+
+JVM tests cover URL validation, credential URL handling, camera entity secret separation, ONVIF XML parsing, NVR adapter fallback, MJPEG framing, and audio ownership. Android instrumentation tests cover Room persistence/migrations and encrypted secret storage. Instrumentation tests require a device or emulator.
